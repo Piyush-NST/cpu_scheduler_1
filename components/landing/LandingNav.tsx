@@ -5,7 +5,7 @@ import { Cpu, Menu, X } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { useState, useRef, useEffect } from "react";
 
-const MOBILE_LINKS = [
+const MOBILE_LINKS: { href: string; label: string; external?: boolean }[] = [
   { href: "/visualizer", label: "Visualizer" },
   { href: "/#algorithms", label: "Algorithms" },
   { href: "/guide", label: "Learn" },
