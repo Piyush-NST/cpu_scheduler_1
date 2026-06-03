@@ -1,0 +1,165 @@
+"use client";
+
+import { useEffect, useState, useRef, useCallback } from "react";
+import { useStore } from "@/store/useStore";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Lightbulb, Sparkles } from "lucide-react";
+
+interface InsightsResponse {
+  insights: string;
+}
+
+export const InsightsPanel = () => {
+  const { results, processes, algorithm, timeQuantum, mlqConfig, totalDuration } = useStore();
+
+  const [insights, setInsights] = useState<string | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const controllerRef = useRef<AbortController | null>(null);
+
+  // Clear insights when simulation inputs change (so user knows to click again)
+  useEffect(() => {
+    setInsights(null);
+    setError(null);
+  }, [algorithm, timeQuantum, mlqConfig, processes, results]);
+
+  const fetchInsights = useCallback(async () => {
+    if (!results || processes.length === 0 || results.metrics.length === 0) return;
+
+    if (controllerRef.current) controllerRef.current.abort();
+    const controller = new AbortController();
+    controllerRef.current = controller;
+    setLoading(true);
+    setError(null);
+    setInsights(null);
+
+    try {
+      const res = await fetch("/api/insights", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          algorithm,
+          timeQuantum,
+          mlqConfig,
+          processes,
+          results,
+        }),
+        signal: controller.signal,
+      });
+
+      if (!res.ok) {
+        throw new Error(`Request failed with status ${res.status}`);
+      }
+
+      const data: InsightsResponse = await res.json();
+      setInsights(data.insights);
+    } catch {
+      if (!controller.signal.aborted) {
+        setError("Could not load AI insights. Try again after a moment.");
+      }
+    } finally {
+      if (!controller.signal.aborted) {
+        setLoading(false);
+      }
+    }
+  }, [algorithm, timeQuantum, mlqConfig, processes, results]);
+
+  if (!results) return null;
+
+  const renderInsights = () => {
+    if (loading) {
+      return (
+        <p className="text-xs text-slate-500 dark:text-slate-400">
+          Asking the LLM for an explanation of this schedule…
+        </p>
+      );
+    }
+
+    if (error) {
+      return (
+        <div className="space-y-3">
+          <p className="text-xs text-red-500 dark:text-red-400">{error}</p>
+          <Button
+            onClick={fetchInsights}
+            variant="outline"
+            size="sm"
+            className="gap-2 border-amber-500/40 text-amber-200 hover:bg-amber-500/10"
+          >
+            <Sparkles className="w-4 h-4" />
+            Try again
+          </Button>
+        </div>
+      );
+    }
+
+    if (!insights) {
+      return (
+        <div className="space-y-3">
+          <p className="text-xs text-slate-500 dark:text-slate-400">
+            Get an AI explanation of this schedule. Run a simulation first, then click below.
+          </p>
+          <Button
+            onClick={fetchInsights}
+            disabled={!results || processes.length === 0 || results.metrics.length === 0}
+            className="gap-2 bg-amber-500/20 hover:bg-amber-500/30 text-amber-200 border border-amber-500/40"
+          >
+            <Sparkles className="w-4 h-4" />
+            Get AI insights
+          </Button>
+        </div>
+      );
+    }
+
+    return (
+      <div className="space-y-3">
+        <div className="space-y-2">
+          {insights.split("\n").map((line: string, idx: number) =>
+            line.trim().length === 0 ? null : (
+              <p key={idx} className="text-sm text-slate-700 dark:text-slate-200 leading-relaxed">
+                {line}
+              </p>
+            )
+          )}
+        </div>
+        <Button
+          onClick={fetchInsights}
+          variant="ghost"
+          size="sm"
+          className="gap-2 text-amber-400 hover:text-amber-300 hover:bg-amber-500/10"
+        >
+          <Sparkles className="w-4 h-4" />
+          Refresh insights
+        </Button>
+      </div>
+    );
+  };
+
+  return (
+    <Card className="glass-card shadow-lg border-slate-200/60 dark:border-slate-700/60 card-hover transition-all duration-300 rounded-2xl overflow-hidden">
+      <CardHeader className="pb-3 flex flex-row items-center justify-between gap-3">
+        <div className="flex items-center gap-2">
+          <Lightbulb className="w-5 h-5 text-amber-500 dark:text-amber-300" />
+          <div>
+            <CardTitle className="text-slate-800 dark:text-slate-100 text-base">
+              AI Performance Insights
+            </CardTitle>
+            <p className="text-[11px] text-slate-500 dark:text-slate-400">
+              Generated by a language model based on the current schedule.
+            </p>
+          </div>
+        </div>
+        <Badge
+          variant="outline"
+          className="text-[11px] font-mono uppercase tracking-wider border-amber-300/60 dark:border-amber-500/60 text-amber-700 dark:text-amber-200 bg-amber-50/70 dark:bg-amber-950/40"
+        >
+          t = {totalDuration.toFixed ? totalDuration.toFixed(1) : totalDuration}s
+        </Badge>
+      </CardHeader>
+      <CardContent className="space-y-3">
+        {renderInsights()}
+      </CardContent>
+    </Card>
+  );
+};
